@@ -88,30 +88,16 @@ LABEL description="Production Docker image for StiCommande Backend (PHP + Larave
 
 WORKDIR /var/www/commande/backend
 
-# Install runtime packages, Nginx, Supervisor, Node.js and build dependencies
-RUN apk update && apk add --no-cache \
-    bash \
-    curl \
-    nginx \
-    supervisor \
-    nodejs \
-    libpng \
-    libpng-dev \
-    libjpeg-turbo \
-    libjpeg-turbo-dev \
-    freetype \
-    freetype-dev \
-    libzip \
-    libzip-dev \
-    icu \
-    icu-dev \
-    libpq \
-    libpq-dev \
-    sqlite-dev \
-    oniguruma-dev \
-    $PHPIZE_DEPS \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+# Install runtime packages, Nginx, Supervisor, Node.js and all PHP extensions via official installer
+RUN curl -sSLf https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions -o /usr/local/bin/install-php-extensions \
+    && chmod +x /usr/local/bin/install-php-extensions \
+    && apk update && apk add --no-cache \
+        bash \
+        curl \
+        nginx \
+        supervisor \
+        nodejs \
+    && install-php-extensions \
         bcmath \
         exif \
         gd \
@@ -124,32 +110,7 @@ RUN apk update && apk add --no-cache \
         pdo_sqlite \
         pgsql \
         zip \
-    && docker-php-ext-enable opcache \
-    && ( \
-        pecl install redis \
-        || ( \
-            mkdir -p /tmp/redis \
-            && curl -fsSL --retry 3 https://github.com/phpredis/phpredis/archive/refs/tags/6.3.0.tar.gz -o /tmp/redis.tar.gz \
-            && tar -xzf /tmp/redis.tar.gz -C /tmp/redis --strip-components=1 \
-            && cd /tmp/redis \
-            && phpize \
-            && ./configure --enable-redis \
-            && make -j$(nproc) \
-            && make install \
-            && rm -rf /tmp/redis /tmp/redis.tar.gz \
-        ) \
-    ) \
-    && docker-php-ext-enable redis \
-    && apk del --no-cache \
-        $PHPIZE_DEPS \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        freetype-dev \
-        libzip-dev \
-        icu-dev \
-        libpq-dev \
-        sqlite-dev \
-        oniguruma-dev
+        redis
 
 # Copy configuration files
 COPY docker/php.ini /usr/local/etc/php/conf.d/custom.ini
