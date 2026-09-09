@@ -1,0 +1,29 @@
+# Environment overrides
+.env.local
+.env.*.local
+
+# Node & Frontend
+**/node_modules/
+frontend/.next/
+frontend/out/
+
+# Backend & Laravel
+backend/vendor/
+backend/storage/*.key
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*.php
+
+# Mobile (Flutter)
+app/.dart_tool/
+app/build/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+logo_app_icon_final.pngs
