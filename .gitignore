@@ -14,12 +14,14 @@ backend/storage/logs/*
 backend/storage/framework/cache/*
 backend/storage/framework/sessions/*
 backend/storage/framework/views/*
+backend/storage/app/private/*
+!backend/storage/app/private/.gitignore
+backend/storage/app/public/*
+!backend/storage/app/public/.gitignore
 backend/bootstrap/cache/*.php
 
 # Mobile (Flutter)
-app/.dart_tool/
-app/build/
-app
+/app/
 # OS / Editor
 .DS_Store
 Thumbs.db
