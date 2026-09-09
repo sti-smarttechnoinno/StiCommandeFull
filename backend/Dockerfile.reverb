@@ -1,0 +1,16 @@
+# =========================================================
+# Laravel Reverb / WebSocket Server
+# =========================================================
+ARG PHP_VERSION=8.5
+FROM sticommande-backend:latest
+
+LABEL description="WebSocket / Reverb Server for StiCommande"
+
+WORKDIR /var/www/commande/backend
+
+EXPOSE 8085
+
+# If Laravel Reverb is installed, run 'php artisan reverb:start'
+# Otherwise, fall back to the built-in Node.js websocket-server.js
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["if php artisan list 2>/dev/null | grep -q 'reverb:start'; then echo 'Starting Laravel Reverb...'; exec php artisan reverb:start --host=0.0.0.0 --port=8085 --verbose; else echo 'Starting Node WebSocket server...'; exec node websocket-server.js; fi"]
