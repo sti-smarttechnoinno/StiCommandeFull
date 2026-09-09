@@ -19,7 +19,7 @@ backend/bootstrap/cache/*.php
 # Mobile (Flutter)
 app/.dart_tool/
 app/build/
-
+app
 # OS / Editor
 .DS_Store
 Thumbs.db
