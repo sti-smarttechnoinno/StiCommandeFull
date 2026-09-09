@@ -125,12 +125,21 @@ RUN apk update && apk add --no-cache \
         pgsql \
         zip \
     && docker-php-ext-enable opcache \
-    && mkdir -p /tmp/redis \
-    && (curl -fsSL --retry 3 https://pecl.php.net/get/redis -o /tmp/redis.tar.gz || curl -fsSL --retry 3 https://github.com/phpredis/phpredis/archive/refs/tags/6.1.0.tar.gz -o /tmp/redis.tar.gz) \
-    && tar -xzf /tmp/redis.tar.gz -C /tmp/redis --strip-components=1 \
-    && (cd /tmp/redis && phpize && ./configure && make -j$(nproc) && make install) \
+    && ( \
+        pecl install redis \
+        || ( \
+            mkdir -p /tmp/redis \
+            && curl -fsSL --retry 3 https://github.com/phpredis/phpredis/archive/refs/tags/6.3.0.tar.gz -o /tmp/redis.tar.gz \
+            && tar -xzf /tmp/redis.tar.gz -C /tmp/redis --strip-components=1 \
+            && cd /tmp/redis \
+            && phpize \
+            && ./configure --enable-redis \
+            && make -j$(nproc) \
+            && make install \
+            && rm -rf /tmp/redis /tmp/redis.tar.gz \
+        ) \
+    ) \
     && docker-php-ext-enable redis \
-    && rm -rf /tmp/redis /tmp/redis.tar.gz \
     && apk del --no-cache \
         $PHPIZE_DEPS \
         libpng-dev \
