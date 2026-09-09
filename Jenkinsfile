@@ -80,9 +80,23 @@ pipeline {
                     mkdir -p public/build && echo '{}' > public/build/manifest.json
 
                     if command -v php${PHP_VERSION} >/dev/null 2>&1 && php${PHP_VERSION} -m | grep -qi pdo_pgsql; then
-                        php${PHP_VERSION} artisan test --env=testing
+                        PHP_BIN="php${PHP_VERSION}"
                     elif command -v php >/dev/null 2>&1 && php -m | grep -qi pdo_pgsql; then
-                        php artisan test --env=testing
+                        PHP_BIN="php"
+                    else
+                        PHP_BIN=""
+                    fi
+
+                    if [ -n "$PHP_BIN" ]; then
+                        if command -v composer >/dev/null 2>&1; then
+                            composer install --prefer-dist --no-interaction
+                        elif [ -f composer.phar ]; then
+                            $PHP_BIN composer.phar install --prefer-dist --no-interaction
+                        else
+                            curl -sS https://getcomposer.org/installer | $PHP_BIN
+                            $PHP_BIN composer.phar install --prefer-dist --no-interaction
+                        fi
+                        $PHP_BIN artisan test --env=testing
                     else
                         docker run --rm \
                             --network host \
