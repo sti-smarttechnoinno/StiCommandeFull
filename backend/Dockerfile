@@ -61,7 +61,7 @@ RUN composer dump-autoload --optimize --no-scripts
 # =========================================================
 # Stage 2: Build Frontend Assets (Vite / React / Tailwind)
 # =========================================================
-FROM docker.io/library/node:20-alpine AS node_builder
+FROM docker.io/library/node:24-alpine AS node_builder
 
 WORKDIR /app
 

@@ -70,6 +70,17 @@ class Client extends Model
                 $client->client_code = sprintf('CLT-%05d', $maxId + 1);
             }
         });
+
+        static::deleting(function (Client $client) {
+            // Safeguard traceability: preserve historical client_name and detach client_id
+            \App\Models\Order::where('client_id', $client->id)->each(function ($order) use ($client) {
+                if (empty($order->client_name) || $order->client_name === 'Client Inconnu') {
+                    $order->client_name = $client->name;
+                }
+                $order->client_id = null;
+                $order->save();
+            });
+        });
     }
 
     public function delegate(): BelongsTo

@@ -307,6 +307,16 @@ class UserController extends Controller
 
     public function destroy(User $user): JsonResponse
     {
+        // Safeguard traceability: detach orders and clients while preserving delegate_name
+        \App\Models\Order::where('delegate_id', $user->id)->each(function ($order) use ($user) {
+            if (empty($order->delegate_name) || $order->delegate_name === 'Unassigned') {
+                $order->delegate_name = $user->name;
+            }
+            $order->delegate_id = null;
+            $order->save();
+        });
+        \App\Models\Client::where('delegate_id', $user->id)->update(['delegate_id' => null]);
+
         $user->delete();
         return response()->json(['message' => 'User deleted successfully']);
     }
@@ -321,7 +331,18 @@ class UserController extends Controller
         }
 
         if ($action === 'delete') {
-            User::whereIn('id', $ids)->delete();
+            $users = User::whereIn('id', $ids)->get();
+            foreach ($users as $user) {
+                \App\Models\Order::where('delegate_id', $user->id)->each(function ($order) use ($user) {
+                    if (empty($order->delegate_name) || $order->delegate_name === 'Unassigned') {
+                        $order->delegate_name = $user->name;
+                    }
+                    $order->delegate_id = null;
+                    $order->save();
+                });
+                \App\Models\Client::where('delegate_id', $user->id)->update(['delegate_id' => null]);
+                $user->delete();
+            }
         } elseif (in_array($action, ['online', 'offline', 'locked', 'suspended', 'invited'])) {
             User::whereIn('id', $ids)->update(['status' => $action]);
         }

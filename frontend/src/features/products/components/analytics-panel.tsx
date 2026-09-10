@@ -30,7 +30,7 @@ export function AnalyticsPanel() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch w-full">
       {/* Category Distribution */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
@@ -44,7 +44,7 @@ export function AnalyticsPanel() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4 flex-1 space-y-3">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start space-y-3">
           {categoryDist.length > 0 ? (
             categoryDist.map((cat) => (
               <div key={cat.name} className="flex items-center justify-between text-xs border-b border-border/20 pb-2 last:border-0">
@@ -59,7 +59,7 @@ export function AnalyticsPanel() {
       </Card>
 
       {/* Operator Breakdown */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
@@ -73,7 +73,7 @@ export function AnalyticsPanel() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4 flex-1 flex flex-col justify-center space-y-4">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start space-y-4">
           {operatorDist.length > 0 ? (
             operatorDist.map((op) => (
               <div key={op.name} className="space-y-1.5">
@@ -99,7 +99,7 @@ export function AnalyticsPanel() {
       </Card>
 
       {/* Stock Overview */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
@@ -113,7 +113,7 @@ export function AnalyticsPanel() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4 flex-1 space-y-3">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start space-y-3">
           {stockOverview.length > 0 ? (
             stockOverview.map((item) => (
               <div key={item.status} className="flex items-center justify-between text-xs p-2 rounded-xl bg-muted/30">

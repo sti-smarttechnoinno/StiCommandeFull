@@ -45,6 +45,23 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            // Safeguard traceability: preserve historical delegate_name on orders and detach delegate_id
+            \App\Models\Order::where('delegate_id', $user->id)->each(function ($order) use ($user) {
+                if (empty($order->delegate_name) || $order->delegate_name === 'Unassigned') {
+                    $order->delegate_name = $user->name;
+                }
+                $order->delegate_id = null;
+                $order->save();
+            });
+
+            // Detach clients assigned to this delegate
+            \App\Models\Client::where('delegate_id', $user->id)->update(['delegate_id' => null]);
+        });
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';

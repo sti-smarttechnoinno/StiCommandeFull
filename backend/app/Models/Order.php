@@ -37,12 +37,20 @@ class Order extends Model
 
     public function client()
     {
-        return $this->belongsTo(Client::class, 'client_id');
+        return $this->belongsTo(Client::class, 'client_id')->withDefault(function ($client, $order) {
+            $client->name = $order->client_name ?: 'Client Inconnu';
+            $client->phone = '-';
+            $client->region = $order->region ?: '-';
+            $client->wilaya = $order->wilaya ?: '-';
+        });
     }
 
     public function delegate()
     {
-        return $this->belongsTo(User::class, 'delegate_id');
+        return $this->belongsTo(User::class, 'delegate_id')->withDefault(function ($delegate, $order) {
+            $delegate->name = $order->delegate_name ?: 'Unassigned';
+            $delegate->role = 'delegate';
+        });
     }
 
     public function validationLogs()

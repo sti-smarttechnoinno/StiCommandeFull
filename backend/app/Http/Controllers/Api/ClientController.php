@@ -285,9 +285,13 @@ class ClientController extends Controller
         }
 
         // Safeguard: Retain all historical orders and their client_name, ensuring NO cascade deletion
-        \App\Models\Order::where('client_id', $client->id)->update([
-            'client_id' => null,
-        ]);
+        \App\Models\Order::where('client_id', $client->id)->each(function ($order) use ($client) {
+            if (empty($order->client_name) || $order->client_name === 'Client Inconnu') {
+                $order->client_name = $client->name;
+            }
+            $order->client_id = null;
+            $order->save();
+        });
 
         $client->delete();
 
