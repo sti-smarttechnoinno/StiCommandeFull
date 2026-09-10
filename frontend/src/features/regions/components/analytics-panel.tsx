@@ -11,6 +11,8 @@ interface AnalyticsPanelProps {
   analytics?: RegionsAnalyticsResponse | null;
 }
 
+const REGIONAL_COLORS = ['#2563EB', '#22C55E', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280'];
+
 function DonutChart({
   data,
   totalRevenue,
@@ -18,51 +20,111 @@ function DonutChart({
   data: { name: string; value: number; color?: string }[];
   totalRevenue: number;
 }) {
-  const sum = data.reduce((s, r) => s + r.value, 0);
-  const total = sum > 0 ? sum : data.length > 0 ? data.length : 1;
+  const regionalWithColors = data.map((r, i) => ({
+    ...r,
+    color: r.color || REGIONAL_COLORS[i % REGIONAL_COLORS.length],
+  }));
+  const total = totalRevenue > 0 ? totalRevenue : regionalWithColors.reduce((s, r) => s + r.value, 0);
   let cumulativePercent = 0;
 
+  if (data.length === 0 || total === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs italic gap-2">
+        <Globe className="h-7 w-7 opacity-30" />
+        <span>Aucune donnée régionale disponible</span>
+      </div>
+    );
+  }
+
+  const formattedTotal =
+    total >= 1000000
+      ? `${(total / 1000000).toFixed(1)}M`
+      : total >= 1000
+      ? `${(total / 1000).toFixed(0)}K`
+      : `${total}`;
+
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative w-28 h-28 flex-shrink-0">
-        <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-          {data.map((segment) => {
-            const rawVal = sum > 0 ? segment.value : 1;
-            const percent = (rawVal / total) * 100;
-            const dashArray = `${percent} ${100 - percent}`;
-            const offset = -cumulativePercent;
-            cumulativePercent += percent;
-            return (
-              <circle
-                key={segment.name}
-                cx="18"
-                cy="18"
-                r="14"
-                fill="none"
-                stroke={segment.color || '#2563EB'}
-                strokeWidth="4"
-                strokeDasharray={dashArray}
-                strokeDashoffset={offset}
-                className="transition-all duration-500"
-              />
-            );
-          })}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-1">
-          <span className="text-[11px] font-bold text-foreground leading-tight">
-            {totalRevenue > 0 ? (totalRevenue >= 1000000 ? `${(totalRevenue / 1000000).toFixed(1)}M` : `${(totalRevenue / 1000).toFixed(0)}K`) : '0'}
-          </span>
-          <span className="text-[9px] text-muted-foreground">DA Total</span>
+    <div className="space-y-4 w-full">
+      <div className="flex items-center gap-5">
+        {/* SVG Donut Chart */}
+        <div className="relative w-28 h-28 flex-shrink-0">
+          <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+            {/* Background ring */}
+            <circle
+              cx="18"
+              cy="18"
+              r="15.915"
+              fill="transparent"
+              stroke="currentColor"
+              strokeWidth="3.8"
+              className="text-muted/30"
+            />
+            {regionalWithColors.map((segment, index) => {
+              const percent = total > 0 ? (segment.value / total) * 100 : 0;
+              const dashArray = `${percent} ${100 - percent}`;
+              const dashOffset = -cumulativePercent;
+              cumulativePercent += percent;
+              return (
+                <circle
+                  key={segment.name || `segment-${index}`}
+                  cx="18"
+                  cy="18"
+                  r="15.915"
+                  fill="transparent"
+                  stroke={segment.color}
+                  strokeWidth="3.8"
+                  strokeDasharray={dashArray}
+                  strokeDashoffset={dashOffset}
+                  className="transition-all duration-500 hover:opacity-80"
+                />
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-base font-black text-foreground tracking-tight">{formattedTotal}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">DA Total</span>
+          </div>
+        </div>
+
+        {/* Regional highlight summary */}
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="text-[11px] font-semibold text-muted-foreground">
+            {data.length} région{data.length > 1 ? 's' : ''} active{data.length > 1 ? 's' : ''}
+          </div>
+          <p className="text-xs text-foreground font-semibold line-clamp-2 leading-snug">
+            {data[0]?.name ? `${data[0].name} (${formatCurrency(data[0].value)})` : 'Part du chiffre d\'affaires'}
+          </p>
         </div>
       </div>
-      <div className="flex-1 space-y-1.5">
-        {data.map((region) => (
-          <div key={region.name} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: region.color || '#2563EB' }} />
-            <span className="text-[11px] text-muted-foreground flex-1 truncate">{region.name}</span>
-            <span className="text-[11px] font-semibold text-foreground">{formatCurrency(region.value)}</span>
-          </div>
-        ))}
+
+      {/* Clear Region Breakdown List with Progress Bars */}
+      <div className="space-y-2.5 pt-2 border-t border-border/30">
+        {regionalWithColors.map((region, index) => {
+          const share = total > 0 ? Math.round((region.value / total) * 100) : 0;
+          return (
+            <div key={region.name || `region-${index}`} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="h-2 w-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: region.color }}
+                  />
+                  <span className="text-xs font-semibold text-foreground truncate">{region.name}</span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className="text-xs font-bold text-foreground">{formatCurrency(region.value)}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">({share}%)</span>
+                </div>
+              </div>
+              <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${share}%`, backgroundColor: region.color }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -111,7 +173,7 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch w-full">
       {/* Regional Revenue Distribution */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
@@ -124,8 +186,11 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
               </CardDescription>
             </div>
           </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary flex-shrink-0">
+            {totalRevenue >= 1000000 ? `${(totalRevenue / 1000000).toFixed(1)}M DA` : totalRevenue >= 1000 ? `${(totalRevenue / 1000).toFixed(0)}K DA` : `${totalRevenue} DA`} Total
+          </span>
         </CardHeader>
-        <CardContent className="p-4 flex-1 flex flex-col justify-center">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start space-y-4">
           {loading ? (
             <div className="h-28 bg-muted/40 rounded-xl animate-pulse" />
           ) : (
@@ -135,7 +200,7 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
       </Card>
 
       {/* Top Regional Delegates */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
@@ -149,7 +214,7 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4 flex-1 flex flex-col justify-center space-y-2.5">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start space-y-2.5">
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3, 4].map((i) => (
@@ -197,7 +262,7 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
       </Card>
 
       {/* Wilaya Status Overview */}
-      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
+      <Card className="h-full border border-border/40 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-start">
         <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
@@ -211,39 +276,39 @@ export function AnalyticsPanel({ analytics }: AnalyticsPanelProps) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4 flex-1 flex flex-col justify-between">
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 h-full">
+        <CardContent className="p-4 flex-1 flex flex-col justify-start">
+          <div className="flex flex-col gap-2.5 w-full">
             {wilayaStatus.map((item) => {
               const pct = totalWilayas > 0 ? Math.round((item.count / totalWilayas) * 100) : 0;
               return (
                 <div
                   key={item.label}
                   className={cn(
-                    'p-3 sm:p-3.5 rounded-xl border flex flex-col justify-between transition-all duration-200 hover:scale-[1.02] min-h-[92px]',
+                    'p-2.5 sm:p-3 rounded-xl border flex items-center justify-between gap-3 transition-all duration-200 hover:scale-[1.01]',
                     item.bgColor
                   )}
                 >
-                  {/* Top: Indicator Dot + Label */}
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  {/* Indicator Dot + Label */}
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className={cn('w-2 h-2 rounded-full flex-shrink-0', item.color)} />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate" title={item.label}>
                       {item.label}
                     </span>
                   </div>
 
-                  {/* Bottom: Big Count + % Badge */}
-                  <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
-                    <div className="flex items-baseline gap-1 min-w-0">
-                      <span className={cn('text-2xl sm:text-3xl font-extrabold tracking-tight leading-none', item.textColor)}>
+                  {/* Count + % Badge */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-baseline gap-1">
+                      <span className={cn('text-base sm:text-lg font-extrabold tracking-tight leading-none', item.textColor)}>
                         {item.count}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/80 font-medium truncate">
+                      <span className="text-[10px] text-muted-foreground/80 font-medium">
                         wilayas
                       </span>
                     </div>
 
                     <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none bg-background/80 shadow-2xs border border-border/40 flex-shrink-0',
+                      'text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none bg-background/80 shadow-2xs border border-border/40',
                       item.textColor
                     )}>
                       {pct}%
