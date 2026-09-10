@@ -92,4 +92,52 @@ class Client extends Model
     {
         return $this->hasMany(ClientObjective::class, 'client_id');
     }
+
+    /**
+     * Scope query to data visible to the given user based on their regional territory and role.
+     */
+    public function scopeForUser($query, ?User $user)
+    {
+        if (!$user || !$user->isRestrictedByRegion()) {
+            return $query;
+        }
+
+        $table = $this->getTable();
+        $region = strtolower(trim($user->region ?? ''));
+        $wilayas = $user->getAssignedRegionWilayas();
+        $userId = $user->id;
+
+        return $query->where(function ($q) use ($table, $region, $wilayas, $userId) {
+            $hasCondition = false;
+
+            if ($userId) {
+                $q->where("{$table}.delegate_id", $userId);
+                $hasCondition = true;
+            }
+
+            if (!empty($region)) {
+                $method = $hasCondition ? 'orWhereRaw' : 'whereRaw';
+                $q->$method("LOWER(TRIM({$table}.region)) = ?", [$region]);
+                $hasCondition = true;
+            }
+
+            if (!empty($wilayas)) {
+                $method = $hasCondition ? 'orWhere' : 'where';
+                $q->$method(function ($subQ) use ($table, $wilayas) {
+                    foreach ($wilayas as $idx => $w) {
+                        if ($idx === 0) {
+                            $subQ->whereRaw("LOWER(TRIM({$table}.wilaya)) = ?", [$w]);
+                        } else {
+                            $subQ->orWhereRaw("LOWER(TRIM({$table}.wilaya)) = ?", [$w]);
+                        }
+                    }
+                });
+                $hasCondition = true;
+            }
+
+            if (!$hasCondition) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+    }
 }

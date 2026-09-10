@@ -19,41 +19,9 @@ class ClientController extends Controller
         $query = Client::with('delegate');
 
         // Server-Side Authorization Principle:
-        // Automatically scope clients query if the authenticated user is a delegate
+        // Automatically scope clients query based on territory of authenticated user
         $authUser = auth('sanctum')->user() ?: $request->user();
-        if ($authUser) {
-            $userRole = strtolower($authUser->role ?? '');
-            $isRegionRestricted = in_array($userRole, ['delegate', 'commercial', 'delegue']);
-            if (!$isRegionRestricted) {
-                $roleModel = \App\Models\Role::where('slug', $userRole)->first();
-                if ($roleModel && $roleModel->has_region_restriction) {
-                    $isRegionRestricted = true;
-                }
-            }
-
-            if ($isRegionRestricted) {
-                $query->where(function ($q) use ($authUser) {
-                    $hasCondition = false;
-                    if (!empty($authUser->region)) {
-                        $q->whereRaw('LOWER(TRIM(region)) = ?', [strtolower(trim($authUser->region))]);
-                        $hasCondition = true;
-                    }
-                    if (!empty($authUser->wilaya)) {
-                        if ($hasCondition) {
-                            $q->orWhereRaw('LOWER(TRIM(wilaya)) = ?', [strtolower(trim($authUser->wilaya))]);
-                        } else {
-                            $q->whereRaw('LOWER(TRIM(wilaya)) = ?', [strtolower(trim($authUser->wilaya))]);
-                            $hasCondition = true;
-                        }
-                    }
-                    if ($hasCondition) {
-                        $q->orWhere('delegate_id', $authUser->id);
-                    } else {
-                        $q->where('delegate_id', $authUser->id);
-                    }
-                });
-            }
-        }
+        $query->forUser($authUser);
 
         if ($search = $request->input('search')) {
             $q = strtolower($search);
@@ -298,41 +266,45 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client deleted successfully']);
     }
 
-    public function kpis(): JsonResponse
+    public function kpis(?Request $request = null): JsonResponse
     {
+        $authUser = auth('sanctum')->user() ?: $request?->user() ?: request()->user();
+        $clientBase = Client::forUser($authUser);
+        $orderBase = Order::forUser($authUser);
+
         $now = Carbon::now();
         $startOfMonth = $now->copy()->startOfMonth();
         $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
         $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
 
-        $totalClients = Client::count();
-        $activeClients = Client::where('status', 'active')->count();
-        $inactiveClients = Client::where('status', 'inactive')->count();
-        $outstandingCredit = (float) Client::sum('outstanding_balance');
+        $totalClients = (clone $clientBase)->count();
+        $activeClients = (clone $clientBase)->where('status', 'active')->count();
+        $inactiveClients = (clone $clientBase)->where('status', 'inactive')->count();
+        $outstandingCredit = (float) (clone $clientBase)->sum('outstanding_balance');
         
-        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $totalRevenue = (float) (clone $orderBase)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
         if ($totalRevenue === 0.0) {
-            $totalRevenue = (float) Client::sum('total_spent');
+            $totalRevenue = (float) (clone $clientBase)->sum('total_spent');
         }
 
-        $ordersThisMonth = (int) Order::whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count();
+        $ordersThisMonth = (int) (clone $orderBase)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count();
         if ($ordersThisMonth === 0) {
-            $ordersThisMonth = (int) Client::where('last_order_at', '>=', $startOfMonth)->sum('total_orders');
+            $ordersThisMonth = (int) (clone $clientBase)->where('last_order_at', '>=', $startOfMonth)->sum('total_orders');
         }
 
-        $prevTotalClients = Client::where('created_at', '<=', $endOfLastMonth)->count();
-        $prevActiveClients = Client::where('status', 'active')->where('created_at', '<=', $endOfLastMonth)->count();
-        $prevInactiveClients = Client::where('status', 'inactive')->where('created_at', '<=', $endOfLastMonth)->count();
-        $prevOutstanding = (float) Client::where('created_at', '<=', $endOfLastMonth)->sum('outstanding_balance');
+        $prevTotalClients = (clone $clientBase)->where('created_at', '<=', $endOfLastMonth)->count();
+        $prevActiveClients = (clone $clientBase)->where('status', 'active')->where('created_at', '<=', $endOfLastMonth)->count();
+        $prevInactiveClients = (clone $clientBase)->where('status', 'inactive')->where('created_at', '<=', $endOfLastMonth)->count();
+        $prevOutstanding = (float) (clone $clientBase)->where('created_at', '<=', $endOfLastMonth)->sum('outstanding_balance');
         
-        $prevRevenue = (float) Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $prevRevenue = (float) (clone $orderBase)->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
         if ($prevRevenue === 0.0) {
-            $prevRevenue = (float) Client::where('created_at', '<=', $endOfLastMonth)->sum('total_spent');
+            $prevRevenue = (float) (clone $clientBase)->where('created_at', '<=', $endOfLastMonth)->sum('total_spent');
         }
 
-        $prevOrders = (int) Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
+        $prevOrders = (int) (clone $orderBase)->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
         if ($prevOrders === 0) {
-            $prevOrders = (int) Client::where('last_order_at', '>=', $startOfLastMonth)
+            $prevOrders = (int) (clone $clientBase)->where('last_order_at', '>=', $startOfLastMonth)
                 ->where('last_order_at', '<=', $endOfLastMonth)
                 ->sum('total_orders');
         }
@@ -349,12 +321,12 @@ class ClientController extends Controller
             $date = now()->subDays($i);
             $endOfDay = $date->copy()->endOfDay();
 
-            $histTotal = Client::where('created_at', '<=', $endOfDay)->count();
-            $histActive = Client::where('status', 'active')->where('created_at', '<=', $endOfDay)->count();
-            $histInactive = Client::where('status', 'inactive')->where('created_at', '<=', $endOfDay)->count();
+            $histTotal = (clone $clientBase)->where('created_at', '<=', $endOfDay)->count();
+            $histActive = (clone $clientBase)->where('status', 'active')->where('created_at', '<=', $endOfDay)->count();
+            $histInactive = (clone $clientBase)->where('status', 'inactive')->where('created_at', '<=', $endOfDay)->count();
 
-            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
-            $dayRev = (float) Order::whereDate('created_at', $date->toDateString())->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+            $dayOrders = (clone $orderBase)->whereDate('created_at', $date->toDateString())->count();
+            $dayRev = (float) (clone $orderBase)->whereDate('created_at', $date->toDateString())->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
 
             $totalClientsSparkline[] = $histTotal;
             $activeClientsSparkline[] = $histActive;
@@ -368,9 +340,10 @@ class ClientController extends Controller
         $currentMonth = (int) now()->month;
         $totalTargetRevenue = (float) \App\Models\ClientObjective::where('year', $currentYear)
             ->where('month', $currentMonth)
+            ->whereIn('client_id', (clone $clientBase)->pluck('id'))
             ->sum('target_revenue');
         if ($totalTargetRevenue <= 0) {
-            $totalTargetRevenue = round((float) Client::sum('total_spent') * 1.2, 2);
+            $totalTargetRevenue = round((float) (clone $clientBase)->sum('total_spent') * 1.2, 2);
         }
 
         return response()->json([
@@ -402,9 +375,13 @@ class ClientController extends Controller
         ]);
     }
 
-    public function analytics(): JsonResponse
+    public function analytics(?Request $request = null): JsonResponse
     {
-        $regionalDistribution = Client::select(
+        $authUser = auth('sanctum')->user() ?: $request?->user() ?: request()->user();
+        $clientBase = Client::forUser($authUser);
+        $orderBase = Order::forUser($authUser);
+
+        $regionalDistribution = (clone $clientBase)->select(
             DB::raw("COALESCE(NULLIF(region, ''), 'Non assigné') as name"),
             'region',
             DB::raw('count(*) as value')
@@ -416,7 +393,7 @@ class ClientController extends Controller
         $currentYear = (int) now()->year;
         $currentMonth = (int) now()->month;
 
-        $objectivePerformance = Client::whereHas('objectives', function ($q) use ($currentYear, $currentMonth) {
+        $objectivePerformance = (clone $clientBase)->whereHas('objectives', function ($q) use ($currentYear, $currentMonth) {
             $q->where('year', $currentYear)->where('month', $currentMonth)->where('target_revenue', '>', 0);
         })
             ->with(['objectives' => function ($q) use ($currentYear, $currentMonth) {
@@ -424,10 +401,10 @@ class ClientController extends Controller
             }])
             ->limit(5)
             ->get()
-            ->map(function ($c) {
+            ->map(function ($c) use ($orderBase) {
                 $obj = $c->objectives->first();
                 $target = (float) ($obj->target_revenue ?? 0);
-                $achieved = (float) Order::where('client_id', $c->id)
+                $achieved = (float) (clone $orderBase)->where('client_id', $c->id)
                     ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
                     ->whereNotIn('status', ['cancelled', 'rejected'])
                     ->sum('total_amount');
@@ -441,7 +418,7 @@ class ClientController extends Controller
             });
 
         if ($objectivePerformance->isEmpty()) {
-            $objectivePerformance = Client::select('clients.name', DB::raw('COALESCE(SUM(orders.total_amount), clients.total_spent) as achieved'))
+            $objectivePerformance = (clone $clientBase)->select('clients.name', DB::raw('COALESCE(SUM(orders.total_amount), clients.total_spent) as achieved'))
                 ->leftJoin('orders', 'clients.id', '=', 'orders.client_id')
                 ->groupBy('clients.id', 'clients.name', 'clients.total_spent')
                 ->orderByDesc('achieved')
@@ -460,8 +437,20 @@ class ClientController extends Controller
                 });
         }
 
-        $topDelegates = User::where('role', 'delegate')
-            ->select(
+        $topDelegatesQuery = User::whereIn('role', ['delegate', 'commercial', 'delegue']);
+        if ($authUser && $authUser->isRestrictedByRegion()) {
+            if (!empty($authUser->region)) {
+                $reg = strtolower(trim($authUser->region));
+                $topDelegatesQuery->where(function ($q) use ($authUser, $reg) {
+                    $q->whereRaw('LOWER(TRIM(region)) = ?', [$reg])
+                      ->orWhere('id', $authUser->id);
+                });
+            } else {
+                $topDelegatesQuery->where('id', $authUser->id);
+            }
+        }
+
+        $topDelegates = $topDelegatesQuery->select(
                 'users.name',
                 DB::raw('COALESCE(SUM(clients.total_orders), 0) as orders'),
                 DB::raw('COALESCE(SUM(clients.total_spent), 0) as revenue'),
@@ -474,7 +463,7 @@ class ClientController extends Controller
             ->get();
 
         if ($topDelegates->isEmpty()) {
-            $topDelegates = Client::whereNotNull('delegate_id')
+            $topDelegates = (clone $clientBase)->whereNotNull('delegate_id')
                 ->select(
                     'clients.delegate_id',
                     DB::raw('(SELECT name FROM users WHERE id = clients.delegate_id) as name'),
@@ -639,6 +628,11 @@ class ClientController extends Controller
             ->toArray();
         $regions = array_values(array_unique(array_filter(array_merge($clientRegions, $modelRegions))));
         sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
+
+        $authUser = auth('sanctum')->user() ?: $request->user();
+        if ($authUser && $authUser->isRestrictedByRegion() && !empty($authUser->region)) {
+            $regions = [$authUser->region];
+        }
 
         // Get distinct delegates from users with role 'delegate' and from assigned client delegates
         $delegateUsers = User::where('role', 'delegate')

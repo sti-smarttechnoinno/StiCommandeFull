@@ -64,34 +64,56 @@ class ReportController extends Controller
     }
 
     /**
+     * Resolve authenticated user from Sanctum token or request.
+     */
+    private function resolveAuthUser(?Request $request = null): ?User
+    {
+        return auth('sanctum')->user() ?: $request?->user() ?: request()->user();
+    }
+
+    /**
      * Get reports KPI metrics overview calculated from live DB data.
      */
-    public function kpis()
+    public function kpis(?Request $request = null)
     {
-        $totalOrders = Order::count();
-        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
+
+        $totalOrders = (clone $orderBase)->count();
+        $totalRevenue = (float) (clone $orderBase)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
         $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
         
-        $pendingOrders = Order::where('status', 'pending')->count();
-        $activeClients = Client::where('status', 'active')->count();
+        $pendingOrders = (clone $orderBase)->where('status', 'pending')->count();
+        $activeClients = Client::forUser($user)->where('status', 'active')->count();
 
-        $activeDelegates = User::where(function ($q) {
-            $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
+        // Active delegates in user's territory
+        $activeDelegatesQuery = User::where(function ($q) {
+            $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial', 'delegue'])
               ->orWhere('role', 'like', '%delegate%');
-        })->where('is_active', true)->count();
+        })->where('is_active', true);
 
+        if ($user && $user->isRestrictedByRegion()) {
+            if (!empty($user->region)) {
+                $reg = strtolower(trim($user->region));
+                $activeDelegatesQuery->where(function ($q) use ($user, $reg) {
+                    $q->whereRaw('LOWER(TRIM(region)) = ?', [$reg])
+                      ->orWhere('id', $user->id);
+                });
+            } else {
+                $activeDelegatesQuery->where('id', $user->id);
+            }
+        }
+
+        $activeDelegates = $activeDelegatesQuery->count();
         if ($activeDelegates === 0) {
-            $activeDelegates = User::where(function ($q) {
-                $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
-                  ->orWhere('role', 'like', '%delegate%');
-            })->count();
+            $activeDelegates = 1;
         }
 
         // Calculate comparison for growth % (current 30 days vs previous 30 days)
-        $currentPeriodRevenue = (float) Order::where('created_at', '>=', now()->subDays(30))
+        $currentPeriodRevenue = (float) (clone $orderBase)->where('created_at', '>=', now()->subDays(30))
                                              ->whereNotIn('status', ['cancelled', 'rejected'])
                                              ->sum('total_amount');
-        $prevPeriodRevenue = (float) Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])
+        $prevPeriodRevenue = (float) (clone $orderBase)->whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])
                                           ->whereNotIn('status', ['cancelled', 'rejected'])
                                           ->sum('total_amount');
 
@@ -99,18 +121,18 @@ class ReportController extends Controller
             ? round((($currentPeriodRevenue - $prevPeriodRevenue) / $prevPeriodRevenue) * 100, 1) 
             : 0.0;
 
-        $currentPeriodOrders = Order::where('created_at', '>=', now()->subDays(30))->count();
-        $prevPeriodOrders = Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->count();
+        $currentPeriodOrders = (clone $orderBase)->where('created_at', '>=', now()->subDays(30))->count();
+        $prevPeriodOrders = (clone $orderBase)->whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->count();
 
         $ordersGrowth = $prevPeriodOrders > 0
-            ? round((($currentPeriodOrders - $prevPeriodOrders) / $prevPeriodOrders) * 100, 1)
+            ? round((($currentPeriodOrders - $prevPeriodOrders) / $prevPeriodOrders) * 100, 1) 
             : 0.0;
 
-        $currentPeriodPending = Order::where('created_at', '>=', now()->subDays(30))->where('status', 'pending')->count();
-        $prevPeriodPending = Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->where('status', 'pending')->count();
+        $currentPeriodPending = (clone $orderBase)->where('created_at', '>=', now()->subDays(30))->where('status', 'pending')->count();
+        $prevPeriodPending = (clone $orderBase)->whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->where('status', 'pending')->count();
 
         $pendingGrowth = $prevPeriodPending > 0
-            ? round((($currentPeriodPending - $prevPeriodPending) / $prevPeriodPending) * 100, 1)
+            ? round((($currentPeriodPending - $prevPeriodPending) / $prevPeriodPending) * 100, 1) 
             : 0.0;
 
         // Daily 7-day sparklines
@@ -121,11 +143,11 @@ class ReportController extends Controller
 
         for ($i = 6; $i >= 0; $i--) {
             $date = now()->subDays($i);
-            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
-            $dayRevenue = (float) Order::whereDate('created_at', $date->toDateString())
+            $dayOrders = (clone $orderBase)->whereDate('created_at', $date->toDateString())->count();
+            $dayRevenue = (float) (clone $orderBase)->whereDate('created_at', $date->toDateString())
                 ->whereNotIn('status', ['cancelled', 'rejected'])
                 ->sum('total_amount');
-            $dayPending = Order::whereDate('created_at', $date->toDateString())
+            $dayPending = (clone $orderBase)->whereDate('created_at', $date->toDateString())
                 ->where('status', 'pending')
                 ->count();
 
@@ -158,6 +180,8 @@ class ReportController extends Controller
      */
     public function revenueOverview(Request $request)
     {
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
         $range = $request->query('range', '30d');
         $points = collect([]);
 
@@ -167,11 +191,11 @@ class ReportController extends Controller
                 $date = now()->subDays($i);
                 $label = $date->format('D, M d');
 
-                $revenue = (float) Order::whereDate('created_at', $date->toDateString())
+                $revenue = (float) (clone $orderBase)->whereDate('created_at', $date->toDateString())
                     ->where('status', '!=', 'cancelled')
                     ->sum('total_amount');
 
-                $orderCount = Order::whereDate('created_at', $date->toDateString())->count();
+                $orderCount = (clone $orderBase)->whereDate('created_at', $date->toDateString())->count();
 
                 $points->push([
                     'month' => $label,
@@ -187,11 +211,11 @@ class ReportController extends Controller
                 $endDate = now()->subDays($i * 5);
                 $label = $endDate->format('M d');
 
-                $revenue = (float) Order::whereBetween('created_at', [$startDate, $endDate])
+                $revenue = (float) (clone $orderBase)->whereBetween('created_at', [$startDate, $endDate])
                     ->where('status', '!=', 'cancelled')
                     ->sum('total_amount');
 
-                $orderCount = Order::whereBetween('created_at', [$startDate, $endDate])->count();
+                $orderCount = (clone $orderBase)->whereBetween('created_at', [$startDate, $endDate])->count();
 
                 $points->push([
                     'month' => $label,
@@ -207,11 +231,11 @@ class ReportController extends Controller
                 $endDate = now()->subDays($i * 15);
                 $label = $endDate->format('M d');
 
-                $revenue = (float) Order::whereBetween('created_at', [$startDate, $endDate])
+                $revenue = (float) (clone $orderBase)->whereBetween('created_at', [$startDate, $endDate])
                     ->where('status', '!=', 'cancelled')
                     ->sum('total_amount');
 
-                $orderCount = Order::whereBetween('created_at', [$startDate, $endDate])->count();
+                $orderCount = (clone $orderBase)->whereBetween('created_at', [$startDate, $endDate])->count();
 
                 $points->push([
                     'month' => $label,
@@ -228,12 +252,12 @@ class ReportController extends Controller
                 $year = $date->year;
                 $month = $date->month;
 
-                $revenue = (float) Order::whereYear('created_at', $year)
+                $revenue = (float) (clone $orderBase)->whereYear('created_at', $year)
                     ->whereMonth('created_at', $month)
                     ->where('status', '!=', 'cancelled')
                     ->sum('total_amount');
 
-                $orderCount = Order::whereYear('created_at', $year)
+                $orderCount = (clone $orderBase)->whereYear('created_at', $year)
                     ->whereMonth('created_at', $month)
                     ->count();
 
@@ -252,9 +276,12 @@ class ReportController extends Controller
     /**
      * Get Revenue by Region distribution.
      */
-    public function revenueByRegion()
+    public function revenueByRegion(?Request $request = null)
     {
-        $regions = Order::select('region', DB::raw('SUM(total_amount) as total_revenue'), DB::raw('COUNT(*) as total_orders'))
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
+
+        $regions = (clone $orderBase)->select('region', DB::raw('SUM(total_amount) as total_revenue'), DB::raw('COUNT(*) as total_orders'))
             ->whereNotNull('region')
             ->where('status', '!=', 'cancelled')
             ->groupBy('region')
@@ -269,6 +296,8 @@ class ReportController extends Controller
             'Oran' => '#3B82F6',
             'Constantine' => '#10B981',
             'Ouargla' => '#F59E0B',
+            'Centre Est' => '#8B5CF6',
+            'Centre' => '#D71920',
         ];
 
         $data = $regions->map(function ($r) use ($colors) {
@@ -288,16 +317,19 @@ class ReportController extends Controller
      */
     public function salesTrends(Request $request)
     {
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
+
         $days = collect([]);
         for ($i = 6; $i >= 0; $i--) {
             $date = now()->subDays($i);
             $dayLabel = $date->format('D, M d');
             
-            $sales = (float) Order::whereDate('created_at', $date->toDateString())
+            $sales = (float) (clone $orderBase)->whereDate('created_at', $date->toDateString())
                 ->where('status', '!=', 'cancelled')
                 ->sum('total_amount');
 
-            $volume = Order::whereDate('created_at', $date->toDateString())->count();
+            $volume = (clone $orderBase)->whereDate('created_at', $date->toDateString())->count();
 
             $days->push([
                 'date' => $dayLabel,
@@ -312,13 +344,16 @@ class ReportController extends Controller
     /**
      * Get Order Status Distribution.
      */
-    public function orderStatusDistribution()
+    public function orderStatusDistribution(?Request $request = null)
     {
-        $statuses = Order::select('status', DB::raw('COUNT(*) as count'))
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
+
+        $statuses = (clone $orderBase)->select('status', DB::raw('COUNT(*) as count'))
             ->groupBy('status')
             ->pluck('count', 'status');
 
-        $total = Order::count();
+        $total = (clone $orderBase)->count();
         if ($total == 0) $total = 1;
 
         $data = [
@@ -366,13 +401,16 @@ class ReportController extends Controller
     /**
      * Get Top Performing Delegates.
      */
-    public function topDelegates()
+    public function topDelegates(?Request $request = null)
     {
-        $delegates = Order::select('delegate_name', DB::raw('SUM(total_amount) as total_sales'), DB::raw('COUNT(*) as total_orders'))
+        $user = $this->resolveAuthUser($request);
+        $orderBase = Order::forUser($user);
+
+        $delegates = (clone $orderBase)->select('delegate_name', 'region', DB::raw('SUM(total_amount) as total_sales'), DB::raw('COUNT(*) as total_orders'))
             ->whereNotNull('delegate_name')
             ->where('delegate_name', '!=', '')
             ->where('status', '!=', 'cancelled')
-            ->groupBy('delegate_name')
+            ->groupBy('delegate_name', 'region')
             ->orderBy('total_sales', 'desc')
             ->limit(5)
             ->get();
@@ -383,7 +421,7 @@ class ReportController extends Controller
                 'name' => $d->delegate_name,
                 'sales' => (float) $d->total_sales,
                 'orders' => (int) $d->total_orders,
-                'region' => 'Alger Center',
+                'region' => $d->region ?: 'Alger Center',
                 'targetAchievement' => min(100, round(($d->total_sales / 250000) * 100, 1)),
             ];
         });
@@ -394,11 +432,19 @@ class ReportController extends Controller
     /**
      * Get Best Selling Products ranking.
      */
-    public function bestProducts()
+    public function bestProducts(?Request $request = null)
     {
-        $best = OrderItem::select('product_name', DB::raw('SUM(subtotal) as total_sales'), DB::raw('SUM(quantity) as total_units'))
-            ->whereNotNull('product_name')
-            ->groupBy('product_name')
+        $user = $this->resolveAuthUser($request);
+
+        $query = OrderItem::select('order_items.product_name', DB::raw('SUM(order_items.subtotal) as total_sales'), DB::raw('SUM(order_items.quantity) as total_units'))
+            ->whereNotNull('order_items.product_name');
+
+        if ($user && $user->isRestrictedByRegion()) {
+            $scopedOrderIds = Order::forUser($user)->pluck('id');
+            $query->whereIn('order_items.order_id', $scopedOrderIds);
+        }
+
+        $best = $query->groupBy('order_items.product_name')
             ->orderBy('total_sales', 'desc')
             ->limit(5)
             ->get();

@@ -26,28 +26,7 @@ class OrderController extends Controller
 
         // Regional Data Scoping for Commercials & Region-Restricted Roles
         $authUser = auth('sanctum')->user() ?: $request->user();
-        if ($authUser) {
-            $userRole = strtolower($authUser->role ?? '');
-            $isRegionRestricted = in_array($userRole, ['delegate', 'commercial', 'delegue']);
-            if (!$isRegionRestricted) {
-                $roleModel = \App\Models\Role::where('slug', $userRole)->first();
-                if ($roleModel && $roleModel->has_region_restriction) {
-                    $isRegionRestricted = true;
-                }
-            }
-
-            if ($isRegionRestricted) {
-                $query->where(function ($q) use ($authUser) {
-                    if (!empty($authUser->region)) {
-                        $q->where('region', $authUser->region);
-                    }
-                    if (!empty($authUser->wilaya)) {
-                        $q->orWhere('wilaya', $authUser->wilaya);
-                    }
-                    $q->orWhere('delegate_id', $authUser->id);
-                });
-            }
-        }
+        $query->forUser($authUser);
 
         // Search term (code, client name, delegate name)
         if ($search = $request->query('search')) {
@@ -107,12 +86,10 @@ class OrderController extends Controller
      */
     public function kpis(?Request $request = null)
     {
+        $authUser = auth('sanctum')->user() ?: $request?->user();
         $delegateId = $request?->query('delegate_id');
-        if (!$delegateId && $request?->user() && $request->user()->role === 'delegate') {
-            $delegateId = $request->user()->id;
-        }
 
-        $orderQuery = Order::query();
+        $orderQuery = Order::forUser($authUser);
         if ($delegateId) {
             $delegateName = User::where('id', $delegateId)->value('name');
             $hasSpecific = (clone $orderQuery)->where(function ($q) use ($delegateId, $delegateName) {
@@ -168,20 +145,20 @@ class OrderController extends Controller
             ? round((($todayRevenue - $yesterdayRevenue) / $yesterdayRevenue) * 100, 1) 
             : 0.0;
 
-        $todayPending = Order::where('created_at', '>=', $todayStart)->where('status', 'pending')->count();
-        $yesterdayPending = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'pending')->count();
+        $todayPending = (clone $orderQuery)->where('created_at', '>=', $todayStart)->where('status', 'pending')->count();
+        $yesterdayPending = (clone $orderQuery)->whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'pending')->count();
         $pendingGrowth = $yesterdayPending > 0 
             ? round((($todayPending - $yesterdayPending) / $yesterdayPending) * 100, 1) 
             : 0.0;
 
-        $todayValidated = Order::where('created_at', '>=', $todayStart)->whereIn('status', ['validated', 'partially_validated'])->count();
-        $yesterdayValidated = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereIn('status', ['validated', 'partially_validated'])->count();
+        $todayValidated = (clone $orderQuery)->where('created_at', '>=', $todayStart)->whereIn('status', ['validated', 'partially_validated'])->count();
+        $yesterdayValidated = (clone $orderQuery)->whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereIn('status', ['validated', 'partially_validated'])->count();
         $validatedGrowth = $yesterdayValidated > 0 
             ? round((($todayValidated - $yesterdayValidated) / $yesterdayValidated) * 100, 1) 
             : 0.0;
 
-        $todayDelivered = Order::where('created_at', '>=', $todayStart)->where('status', 'delivered')->count();
-        $yesterdayDelivered = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'delivered')->count();
+        $todayDelivered = (clone $orderQuery)->where('created_at', '>=', $todayStart)->where('status', 'delivered')->count();
+        $yesterdayDelivered = (clone $orderQuery)->whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'delivered')->count();
         $deliveredGrowth = $yesterdayDelivered > 0 
             ? round((($todayDelivered - $yesterdayDelivered) / $yesterdayDelivered) * 100, 1) 
             : 0.0;
@@ -195,17 +172,17 @@ class OrderController extends Controller
 
         for ($i = 6; $i >= 0; $i--) {
             $date = now()->subDays($i);
-            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
-            $dayRevenue = (float) Order::whereDate('created_at', $date->toDateString())
+            $dayOrders = (clone $orderQuery)->whereDate('created_at', $date->toDateString())->count();
+            $dayRevenue = (float) (clone $orderQuery)->whereDate('created_at', $date->toDateString())
                 ->whereNotIn('status', ['cancelled', 'rejected'])
                 ->sum('total_amount');
-            $dayPending = Order::whereDate('created_at', $date->toDateString())
+            $dayPending = (clone $orderQuery)->whereDate('created_at', $date->toDateString())
                 ->where('status', 'pending')
                 ->count();
-            $dayValidated = Order::whereDate('created_at', $date->toDateString())
+            $dayValidated = (clone $orderQuery)->whereDate('created_at', $date->toDateString())
                 ->whereIn('status', ['validated', 'partially_validated'])
                 ->count();
-            $dayDelivered = Order::whereDate('created_at', $date->toDateString())
+            $dayDelivered = (clone $orderQuery)->whereDate('created_at', $date->toDateString())
                 ->where('status', 'delivered')
                 ->count();
 
@@ -229,6 +206,8 @@ class OrderController extends Controller
             ->where('month', $currentMonth);
         if ($delegateId) {
             $delegateObjectiveQuery->where('user_id', $delegateId);
+        } elseif ($authUser && $authUser->isRestrictedByRegion()) {
+            $delegateObjectiveQuery->where('user_id', $authUser->id);
         }
         $delegateObjective = $delegateObjectiveQuery->first();
 

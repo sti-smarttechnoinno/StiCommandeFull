@@ -10,9 +10,36 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
+    private function scopeForUser($query, ?\App\Models\User $user)
+    {
+        if (!$user || !$user->isRestrictedByRegion()) {
+            return $query;
+        }
+
+        $reg = strtolower(trim($user->region ?? ''));
+        $userName = strtolower(trim($user->name ?? ''));
+
+        return $query->where(function ($q) use ($reg, $userName, $user) {
+            $q->whereNull('region')
+              ->orWhere('region', '')
+              ->orWhere('region', 'Global')
+              ->orWhere('region', 'National');
+            if (!empty($reg)) {
+                $q->orWhereRaw('LOWER(TRIM(region)) = ?', [$reg]);
+            }
+            if ($user->id) {
+                $q->orWhere('user_id', $user->id);
+            }
+            if (!empty($userName)) {
+                $q->orWhereRaw('LOWER(TRIM("user")) = ?', [$userName]);
+            }
+        });
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = Notification::query();
+        $authUser = auth('sanctum')->user() ?: $request->user();
+        $query = $this->scopeForUser(Notification::query(), $authUser);
 
         if ($search = $request->input('search')) {
             $q = strtolower($search);
@@ -84,12 +111,15 @@ class NotificationController extends Controller
         ]);
     }
 
-    public function kpis(): JsonResponse
+    public function kpis(?Request $request = null): JsonResponse
     {
-        $total = Notification::count();
-        $unread = Notification::where('read', false)->count();
-        $critical = Notification::where('priority', 'critical')->count();
-        $pendingActions = Notification::where('status', 'unread')->whereIn('priority', ['critical', 'high'])->count();
+        $authUser = auth('sanctum')->user() ?: $request?->user();
+        $base = $this->scopeForUser(Notification::query(), $authUser);
+
+        $total = (clone $base)->count();
+        $unread = (clone $base)->where('read', false)->count();
+        $critical = (clone $base)->where('priority', 'critical')->count();
+        $pendingActions = (clone $base)->where('status', 'unread')->whereIn('priority', ['critical', 'high'])->count();
 
         // 7-day historical sparklines
         $sparkTotal = [];
@@ -99,10 +129,10 @@ class NotificationController extends Controller
 
         for ($i = 6; $i >= 0; $i--) {
             $date = now()->subDays($i)->endOfDay();
-            $sparkTotal[] = Notification::where('created_at', '<=', $date)->count();
-            $sparkUnread[] = Notification::where('read', false)->where('created_at', '<=', $date)->count();
-            $sparkCritical[] = Notification::where('priority', 'critical')->where('created_at', '<=', $date)->count();
-            $sparkPending[] = Notification::where('status', 'unread')->whereIn('priority', ['critical', 'high'])->where('created_at', '<=', $date)->count();
+            $sparkTotal[] = (clone $base)->where('created_at', '<=', $date)->count();
+            $sparkUnread[] = (clone $base)->where('read', false)->where('created_at', '<=', $date)->count();
+            $sparkCritical[] = (clone $base)->where('priority', 'critical')->where('created_at', '<=', $date)->count();
+            $sparkPending[] = (clone $base)->where('status', 'unread')->whereIn('priority', ['critical', 'high'])->where('created_at', '<=', $date)->count();
         }
 
         $calcTrend = function (array $spark) {
@@ -134,8 +164,11 @@ class NotificationController extends Controller
         ]);
     }
 
-    public function analytics(): JsonResponse
+    public function analytics(?Request $request = null): JsonResponse
     {
+        $authUser = auth('sanctum')->user() ?: $request?->user();
+        $base = $this->scopeForUser(Notification::query(), $authUser);
+
         $categoryColors = [
             'orders' => '#2563EB',
             'stock' => '#22C55E',
@@ -147,7 +180,7 @@ class NotificationController extends Controller
             'finance' => '#F59E0B',
         ];
 
-        $categoryDistribution = Notification::selectRaw('category as name, count(*) as value')
+        $categoryDistribution = (clone $base)->selectRaw('category as name, count(*) as value')
             ->groupBy('category')
             ->get()
             ->map(function ($c) use ($categoryColors) {
@@ -159,7 +192,7 @@ class NotificationController extends Controller
                 ];
             });
 
-        $activitySummary = Notification::where('created_at', '>=', now()->subDays(30))
+        $activitySummary = (clone $base)->where('created_at', '>=', now()->subDays(30))
             ->selectRaw('category as name, count(*) as value')
             ->groupBy('category')
             ->get()
@@ -174,22 +207,22 @@ class NotificationController extends Controller
         $statusDistribution = [
             [
                 'name' => 'Read',
-                'value' => Notification::where('read', true)->count(),
+                'value' => (clone $base)->where('read', true)->count(),
                 'color' => '#22C55E',
             ],
             [
                 'name' => 'Unread',
-                'value' => Notification::where('read', false)->count(),
+                'value' => (clone $base)->where('read', false)->count(),
                 'color' => '#F59E0B',
             ],
             [
                 'name' => 'Archived',
-                'value' => Notification::where('status', 'archived')->count(),
+                'value' => (clone $base)->where('status', 'archived')->count(),
                 'color' => '#6B7280',
             ],
             [
                 'name' => 'Pending Action',
-                'value' => Notification::where('status', 'unread')->whereIn('priority', ['critical', 'high'])->count(),
+                'value' => (clone $base)->where('status', 'unread')->whereIn('priority', ['critical', 'high'])->count(),
                 'color' => '#EF4444',
             ],
         ];

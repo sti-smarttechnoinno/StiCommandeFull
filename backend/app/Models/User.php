@@ -146,9 +146,65 @@ class User extends Authenticatable
         if ($this->isAdmin()) {
             return false;
         }
-        if ($this->role === 'commercial' || $this->role === 'delegate') {
+        $r = strtolower($this->role ?? '');
+        if (in_array($r, ['commercial', 'delegate', 'delegue'])) {
             return true;
         }
         return (bool) ($this->roleModel?->has_region_restriction ?? false);
+    }
+
+    /**
+     * Get array of all wilaya names (in lowercase trimmed form) belonging to user's assigned territory.
+     *
+     * @return array<string>
+     */
+    public function getAssignedRegionWilayas(): array
+    {
+        $wilayas = [];
+
+        // 1. Wilayas belonging to user's assigned region
+        if (!empty($this->region)) {
+            $cleanedRegion = strtolower(trim($this->region));
+            $regionNames = [$cleanedRegion];
+
+            $regionModel = \App\Models\Region::whereRaw('LOWER(TRIM(name)) = ?', [$cleanedRegion])
+                ->orWhereRaw('LOWER(TRIM(code)) = ?', [$cleanedRegion])
+                ->first();
+
+            if ($regionModel) {
+                $regionNames[] = strtolower(trim($regionModel->name));
+                $regionNames[] = strtolower(trim($regionModel->code));
+            }
+
+            $regionWilayas = \App\Models\Wilaya::where(function ($q) use ($regionNames, $regionModel) {
+                foreach (array_unique($regionNames) as $idx => $rName) {
+                    if ($idx === 0) {
+                        $q->whereRaw('LOWER(TRIM(region_name)) = ?', [$rName])
+                          ->orWhereRaw('LOWER(TRIM(region_id)) = ?', [$rName]);
+                    } else {
+                        $q->orWhereRaw('LOWER(TRIM(region_name)) = ?', [$rName])
+                          ->orWhereRaw('LOWER(TRIM(region_id)) = ?', [$rName]);
+                    }
+                }
+                if ($regionModel) {
+                    $q->orWhere('custom_region_id', $regionModel->id);
+                }
+            })->pluck('name')->map(fn ($name) => strtolower(trim($name)))->all();
+
+            $wilayas = array_merge($wilayas, $regionWilayas);
+        }
+
+        // 2. Wilayas explicitly set on the user (e.g. "10 - Bouira, 15 - Tizi Ouzou")
+        if (!empty($this->wilaya)) {
+            $parts = explode(',', $this->wilaya);
+            foreach ($parts as $part) {
+                $cleaned = preg_replace('/^\d+\s*-\s*/', '', trim($part));
+                if (!empty($cleaned)) {
+                    $wilayas[] = strtolower(trim($cleaned));
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($wilayas)));
     }
 }
