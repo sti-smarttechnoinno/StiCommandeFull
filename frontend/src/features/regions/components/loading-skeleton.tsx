@@ -1,7 +1,8 @@
 'use client';
 
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react';
 
 export function RegionsLoadingSkeleton() {
   return (
@@ -9,15 +10,8 @@ export function RegionsLoadingSkeleton() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i} className="border border-border/40 shadow-xs rounded-[20px] overflow-hidden">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <Skeleton className="w-12 h-12 rounded-2xl" />
-                <Skeleton className="w-16 h-5 rounded-full" />
-              </div>
-              <Skeleton className="h-3 w-24 mb-2" />
-              <Skeleton className="h-7 w-20" />
-            </CardContent>
+          <Card key={i} className="p-4 flex items-center justify-center h-28 border-border/40 bg-card">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </Card>
         ))}
       </div>

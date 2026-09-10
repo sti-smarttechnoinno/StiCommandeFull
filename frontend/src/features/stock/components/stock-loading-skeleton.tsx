@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react';
 
 export function StockLoadingSkeleton() {
   return (
@@ -22,12 +23,8 @@ export function StockLoadingSkeleton() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[1, 2, 3, 4, 5].map((i) => (
-          <Card key={i} className="border border-border/40 shadow-xs rounded-2xl">
-            <CardContent className="p-5">
-              <Skeleton className="h-4 w-24 mb-3" />
-              <Skeleton className="h-8 w-20 mb-2" />
-              <Skeleton className="h-3 w-16" />
-            </CardContent>
+          <Card key={i} className="p-4 flex items-center justify-center h-28 border-border/40 bg-card">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </Card>
         ))}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { Sparkline } from '@/components/charts/sparkline';
@@ -10,21 +10,48 @@ import {
   Bell,
   Mail,
   TriangleAlert,
-  ShoppingCart,
-  Package,
-  Shield,
   Clock,
+  TrendingUp,
+  TrendingDown,
   Loader2,
 } from 'lucide-react';
 
 const ICON_THEMES = {
-  red: 'bg-rose-500/10 text-rose-600',
-  amber: 'bg-amber-500/10 text-amber-600',
-  orange: 'bg-orange-500/10 text-orange-600',
-  blue: 'bg-blue-500/10 text-blue-600',
-  green: 'bg-emerald-500/10 text-emerald-600',
-  rose: 'bg-rose-500/10 text-rose-600',
+  red: 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400',
+  amber: 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400',
+  orange: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400',
+  blue: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400',
+  green: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400',
+  rose: 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400',
 } as const;
+
+function formatVal(val: number): string {
+  if (val >= 1000) return val.toLocaleString('en-US');
+  return String(val);
+}
+
+function CountUp({ target }: { target: number }) {
+  const [display, setDisplay] = useState(() => formatVal(target));
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const start = Date.now();
+    const duration = 1000;
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(target * eased);
+      setDisplay(formatVal(current));
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [target]);
+
+  return <span>{display}</span>;
+}
 
 export function NotificationsKPICards() {
   const refreshKey = useNotificationsStore((s) => s.refreshKey);
@@ -53,37 +80,45 @@ export function NotificationsKPICards() {
     {
       title: 'All Notifications',
       value: metrics?.totalNotifications ?? 0,
-      changeLabel: metrics?.trends.totalNotifications ? `${metrics.trends.totalNotifications > 0 ? '+' : ''}${metrics.trends.totalNotifications}%` : 'Real-time',
+      change: metrics?.trends.totalNotifications ?? 0,
+      hasChangeNum: true,
+      changeLabel: 'Real-time',
       icon: <Bell className="h-5 w-5" />,
-      iconColor: 'red' as const,
-      sparkline: metrics?.sparklines.totalNotifications ?? [0, 0, 0, 0, 0],
-      sparkColor: '#D71920',
+      iconColor: 'blue' as const,
+      sparkline: metrics?.sparklines.totalNotifications || [0, 0, 0, 0, 0, 0, 0],
+      sparkColor: '#2563EB',
     },
     {
       title: 'Unread',
       value: metrics?.unreadCount ?? 0,
+      change: 0,
+      hasChangeNum: false,
       changeLabel: 'Need Review',
       icon: <Mail className="h-5 w-5" />,
       iconColor: 'amber' as const,
-      sparkline: metrics?.sparklines.unreadCount ?? [0, 0, 0, 0, 0],
+      sparkline: metrics?.sparklines.unreadCount || [0, 0, 0, 0, 0, 0, 0],
       sparkColor: '#F59E0B',
     },
     {
       title: 'Critical Alerts',
       value: metrics?.criticalAlerts ?? 0,
+      change: 0,
+      hasChangeNum: false,
       changeLabel: 'Immediate Action',
       icon: <TriangleAlert className="h-5 w-5" />,
-      iconColor: 'rose' as const,
-      sparkline: metrics?.sparklines.criticalAlerts ?? [0, 0, 0, 0, 0],
+      iconColor: 'red' as const,
+      sparkline: metrics?.sparklines.criticalAlerts || [0, 0, 0, 0, 0, 0, 0],
       sparkColor: '#EF4444',
     },
     {
       title: 'Pending Actions',
       value: metrics?.pendingActions ?? 0,
+      change: 0,
+      hasChangeNum: false,
       changeLabel: 'Requires Action',
       icon: <Clock className="h-5 w-5" />,
       iconColor: 'orange' as const,
-      sparkline: metrics?.sparklines.pendingActions ?? [0, 0, 0, 0, 0],
+      sparkline: metrics?.sparklines.pendingActions || [0, 0, 0, 0, 0, 0, 0],
       sparkColor: '#F97316',
     },
   ];
@@ -94,7 +129,7 @@ export function NotificationsKPICards() {
         {Array.from({ length: 4 }).map((_, i) => (
           <Card
             key={i}
-            className="p-5 flex items-center justify-center h-[116px] border border-border/40 bg-card rounded-[20px]"
+            className="p-4 flex items-center justify-center h-28 border-border/40 bg-card"
           >
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </Card>
@@ -105,34 +140,61 @@ export function NotificationsKPICards() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {kpis.map((kpi) => (
-        <Card
-          key={kpi.title}
-          className="group relative overflow-hidden p-5 bg-card border border-border/40 shadow-xs hover:shadow-md transition-all duration-200 rounded-[20px] cursor-default"
-        >
-          <div className="flex items-start justify-between gap-3 relative z-10">
-            <div className="flex-1 min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
-                {kpi.title}
-              </span>
-              <div className="flex items-baseline gap-2 flex-wrap mb-1">
-                <span className="text-[28px] font-bold text-foreground tracking-tight leading-none">
-                  {kpi.value}
+      {kpis.map((kpi) => {
+        const isPositive = kpi.change >= 0;
+        return (
+          <Card
+            key={kpi.title}
+            className="group relative overflow-hidden bg-card border-border/60 shadow-xs hover:shadow-md transition-all duration-300 rounded-2xl p-4 flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-muted-foreground tracking-tight block">
+                  {kpi.title}
                 </span>
+                <div className="text-xl font-bold tracking-tight text-foreground">
+                  <CountUp target={kpi.value} />
+                </div>
               </div>
-              <span className="text-[10px] text-muted-foreground/70 mt-2 block">{kpi.changeLabel}</span>
+              <div
+                className={cn(
+                  'p-2.5 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110',
+                  ICON_THEMES[kpi.iconColor]
+                )}
+              >
+                {kpi.icon}
+              </div>
             </div>
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', ICON_THEMES[kpi.iconColor])}>
-              {kpi.icon}
+
+            <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/40">
+              <div className="flex items-center gap-1">
+                {kpi.hasChangeNum ? (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md',
+                      isPositive
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                    )}
+                  >
+                    {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {isPositive ? `+${kpi.change}%` : `${kpi.change}%`}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                    {kpi.changeLabel}
+                  </span>
+                )}
+              </div>
+              {kpi.sparkline && (
+                <div className="w-14 h-6">
+                  <Sparkline data={kpi.sparkline} color={kpi.sparkColor || '#2563EB'} />
+                </div>
+              )}
             </div>
-          </div>
-          {kpi.sparkline && kpi.sparkline.length > 0 && (
-            <div className="absolute bottom-0 right-0 left-0 h-10 opacity-15 group-hover:opacity-30 transition-opacity duration-200 pointer-events-none overflow-hidden rounded-b-[20px]">
-              <Sparkline data={kpi.sparkline} color={kpi.sparkColor} className="w-full h-full" />
-            </div>
-          )}
-        </Card>
-      ))}
+          </Card>
+        );
+      })}
     </div>
   );
 }

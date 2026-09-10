@@ -173,23 +173,21 @@ export default function DashboardPage() {
 
       {/* KPI Cards */}
       {loadingKpis ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="relative overflow-hidden p-5 bg-card border border-border/40 shadow-xs rounded-2xl">
-              <div className="flex items-center justify-center h-20">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+            <Card key={i} className="p-4 flex items-center justify-center h-28 border-border/40 bg-card">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </Card>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KPICard
             title="Total Orders"
             value={kpis ? kpis.totalOrders : 0}
             trend={kpis?.ordersGrowth}
             sparkData={kpis?.ordersSparkline}
-            icon={<ShoppingCart className="h-6 w-6" />}
+            icon={<ShoppingCart className="h-5 w-5" />}
             iconColor="blue"
             sparkColor="#2563EB"
           />
@@ -199,7 +197,7 @@ export default function DashboardPage() {
             suffix=" DA"
             trend={kpis?.revenueGrowth}
             sparkData={kpis?.revenueSparkline}
-            icon={<DollarSign className="h-6 w-6" />}
+            icon={<DollarSign className="h-5 w-5" />}
             iconColor="green"
             sparkColor="#22C55E"
           />
@@ -208,7 +206,7 @@ export default function DashboardPage() {
             value={kpis ? kpis.pendingOrders : 0}
             trend={kpis?.pendingGrowth}
             sparkData={kpis?.pendingSparkline}
-            icon={<Clock className="h-6 w-6" />}
+            icon={<Clock className="h-5 w-5" />}
             iconColor="orange"
             sparkColor="#F59E0B"
           />
@@ -217,7 +215,7 @@ export default function DashboardPage() {
             value={kpis ? kpis.activeDelegates : 0}
             subtitle="Field Sales Reps"
             sparkData={kpis?.delegatesSparkline}
-            icon={<Users className="h-6 w-6" />}
+            icon={<Users className="h-5 w-5" />}
             iconColor="indigo"
             sparkColor="#6366F1"
           />
